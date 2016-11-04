@@ -8,6 +8,10 @@
 #include <iostream>
 #include <future>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 void lbmThread();
 
 volatile bool stop;
@@ -49,20 +53,21 @@ void lbmThread() {
 	CLBMFileManager fm;
 
 	CVector3<double> vel;
-	vel.set(0.6, 0, 0);
+	vel.set(0.2, 0, 0);
 
 	/*---------------------------*/
 	//		単位に注意!!
 	/*---------------------------*/
+	int latticle_num = 16;	//代表格子点数
 	CLBM::LBMInfo info;
 	info.x = 512;
-	info.y = 512;
+	info.y = 256;
 	info.z = 1;
 	info.directionNum = 9;
-	info.cld = 0.2;	//1[m]
-	info.cv = 0.6;	//1 [m/s]
-	info.deltaLength = info.cld / (double)info.x;
-	info.deltaTime = 1e-8;
+	info.cld = 0.01;	//1[m]
+	info.cv = vel.get(0);	//1 [m/s]
+	info.deltaLength = info.cld / (double)latticle_num;
+	info.deltaTime = info.deltaLength;
 	info.velocity = &vel;
 	info.lambda = 68e-9;
 	info.M = 0.028966;
@@ -96,11 +101,23 @@ void lbmThread() {
 		if (step % 10 == 0) {
 			//fm.writeColorMap(&press[index].str(), &lbm, info, CLBMFileManager::TYPE::PRESSURE);
 			//fm.writeColorMap(&velocity[text_index].str(), &lbm, info, CLBMFileManager::TYPE::VELOCITY);
-			string fileName = "v_" + std::to_string(text_index) + ".dat";
-			string fileName_press = "p_" + std::to_string(text_index) + ".dat";
+			string fileName = "re_102_512_256_omp_v_2_" + std::to_string(text_index) + ".dat";
+			string fileName_press = "re_102_512_256_omp_p_2_" + std::to_string(text_index) + ".dat";
 			//fm.writeVelocityDistribution(&fileName, &lbm, &info);
-			fm.writeVelocity(&fileName, &lbm, &info);
-			fm.writePresser(&fileName_press, &lbm, &info);
+			#pragma omp parallel
+			{
+				#pragma omp sections
+				{
+					#pragma omp section
+					{
+						fm.writeVelocity(&fileName, &lbm, &info);
+					}
+					#pragma omp section
+					{
+						fm.writePresser(&fileName_press, &lbm, &info);
+					}
+				}
+			}
 			printf("セーブしました\n");
 			text_index++;
 		}

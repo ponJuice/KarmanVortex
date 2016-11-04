@@ -1,6 +1,10 @@
 #include "LBM.h"
 #include "Debug.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 
 CLBM::CLBM(LBMInfo lbm)
 {
@@ -12,7 +16,8 @@ CLBM::CLBM(LBMInfo lbm)
 
 
 	//緩和時間の計算
-	tau = info.lambda / info.deltaTime;
+	//tau = info.lambda / info.deltaTime;
+	tau = 3.0*(info.mu / info.density)*(info.deltaTime / (info.deltaLength*info.deltaLength)) + 0.5;
 
 	//係数の設定
 	w = new double[info.directionNum];
@@ -29,6 +34,7 @@ CLBM::CLBM(LBMInfo lbm)
 	//速度方向ベクトルのメモリ確保
 	e = new CVector3<double>[info.directionNum];
 	//速度方向ベクトルの初期化
+	//移流速度を使用
 	e[0].set(0, 0, 0);
 	e[1].set(1, 0, 0);
 	e[2].set(0, 1, 0);
@@ -57,7 +63,7 @@ CLBM::CLBM(LBMInfo lbm)
 
 
 	//円
-	cx = info.x / 8;
+	cx = info.x / 6;
 	cy = info.y / 2;
 	r = 8;
 
@@ -94,7 +100,13 @@ void CLBM::setValue(int x, int y, int z, int direct, double value, CLBM::ACCESS 
 		point_next[info.x * info.y * z + info.x * y + x].distribut[direct] = value;
 }
 double CLBM::calcPeq(Point* point, int a) {
-	double e_dot_v = e[a].dot(&point->velocity);		//速度方向ベクトルと速度ベクトルの内積
+	CVector3<double> temp;
+	temp.copy(&e[a]);
+
+	temp.mult(c, &temp);
+
+	//double e_dot_v = temp.dot(&point->velocity);		//速度方向ベクトルと速度ベクトルの内積
+	double e_dot_v = e[a].dot(&point->velocity);
 	double v_dot_v = point->velocity.dot(&point->velocity);
 	//平衡分布関数
 	/*double peq = w[a] * point->density*(1.0
@@ -104,7 +116,7 @@ double CLBM::calcPeq(Point* point, int a) {
 	double peq = w[a] * point->density*(1.0
 		+ (3.0*e_dot_v)
 		+ (9.0/2.0)*(e_dot_v*e_dot_v)
-		- (3.0/2.0)*(v_dot_v*v_dot_v));
+		- (3.0/2.0)*v_dot_v);
 	return peq;
 }
 
@@ -126,8 +138,12 @@ void CLBM::calcStep() {
 	//printf("%d\n",stepNum);
 
 	//すべての格子点を走査する
+
+#pragma omp parallel for
 	for (int x = 0; x < info.x; x++) {
+#pragma omp parallel for
 		for (int y = 0; y < info.y; y++) {
+#pragma omp parallel for
 			for (int z = 0; z < info.z; z++) {
 				//オブジェクト内に入っているか
 				double _x = cx - x;
@@ -147,39 +163,16 @@ void CLBM::calcStep() {
 					
 					continue;
 				}
-				if (x >= info.x-1) {
-					//流出境界は速度勾配が0になるよう設定
-					Point* p = getPoint(x-1, y, z, ACCESS::NOW);
-					Point* np = getPoint(x, y, z, ACCESS::NEXT);
-					np->density = p->density;
-					np->velocity.copy(&p->velocity);
-					for (int a = 0; a < info.directionNum; a++) {
-						np->distribut[a] = p->distribut[a];
-					}
+				if (x >= info.x - 1) {
 					continue;
 				}
 				if (y <= 0) {
-					//流出境界は速度勾配が0になるよう設定
-					Point* p = getPoint(x, y+1, z, ACCESS::NOW);
-					Point* np = getPoint(x, y, z, ACCESS::NEXT);
-					np->density = p->density;
-					np->velocity.copy(&p->velocity);
-					for (int a = 0; a < info.directionNum; a++) {
-						np->distribut[a] = p->distribut[a];
-					}
 					continue;
 				}
 				if (y >= info.y - 1) {
-					//流出境界は速度勾配が0になるよう設定
-					Point* p = getPoint(x, y - 1, z, ACCESS::NOW);
-					Point* np = getPoint(x, y, z, ACCESS::NEXT);
-					np->density = p->density;
-					np->velocity.copy(&p->velocity);
-					for (int a = 0; a < info.directionNum; a++) {
-						np->distribut[a] = p->distribut[a];
-					}
 					continue;
 				}
+#pragma omp parallel for
 				//方向に関して計算する
 				for (int a = 0; a < info.directionNum; a++) {
 					//まず計算に使用する格子点を取得する
@@ -210,6 +203,40 @@ void CLBM::calcStep() {
 				calcDensityAndVelocity(x, y, z,ACCESS::NEXT);
 			}
 			//printf("\n");
+		}
+	}
+#pragma omp parallel for
+	//流入境界は速度勾配を0にする必要があるので最後に行う
+	for (int x = 0; x < info.x; x++) {
+		//流出境界は速度勾配が0になるよう設定
+		Point* p = getPoint(x, 1, 0, ACCESS::NEXT);
+		Point* np = getPoint(x, 0, 0, ACCESS::NEXT);
+		np->density = p->density;
+		np->velocity.copy(&p->velocity);
+#pragma omp parallel for
+		for (int a = 0; a < info.directionNum; a++) {
+			np->distribut[a] = p->distribut[a];
+		}
+		//流出境界は速度勾配が0になるよう設定
+		p = getPoint(x, info.y - 2, 0, ACCESS::NEXT);
+		np = getPoint(x, info.y - 1, 0, ACCESS::NEXT);
+		np->density = p->density;
+		np->velocity.copy(&p->velocity);
+#pragma omp parallel for
+		for (int a = 0; a < info.directionNum; a++) {
+			np->distribut[a] = p->distribut[a];
+		}
+	}
+#pragma omp parallel for
+	for (int y = 0; y < info.y; y++) {
+		//流出境界は速度勾配が0になるよう設定
+		Point* p = getPoint(info.x - 2, y, 0, ACCESS::NEXT);
+		Point* np = getPoint(info.x - 1, y, 0, ACCESS::NEXT);
+		np->density = p->density;
+		np->velocity.copy(&p->velocity);
+#pragma omp parallel for
+		for (int a = 0; a < info.directionNum; a++) {
+			np->distribut[a] = p->distribut[a];
 		}
 	}
 	//参照を交互に入れ替えることで時間を進ませる
@@ -260,6 +287,7 @@ void CLBM::initData() {
 void CLBM::calcDensityAndVelocity(int x, int y, int z,CLBM::ACCESS type) {
 	Point* p = getPoint(x, y, z, type);
 	CVector3<double> temp;
+	CVector3<double> temp_e;
 	p->density = 0;
 	p->velocity.set(0, 0, 0);
 	//圧力、速度の計算
@@ -267,7 +295,10 @@ void CLBM::calcDensityAndVelocity(int x, int y, int z,CLBM::ACCESS type) {
 		//巨視的密度の計算
 		p->density += p->distribut[a];
 		//巨視的速度の計算
-		e[a].mult(p->distribut[a], &temp);
+		temp_e.copy(&e[a]);
+		temp_e.mult(c, &temp_e);
+		//e[a].mult(p->distribut[a], &temp);
+		temp_e.mult(p->distribut[a], &temp);
 		p->velocity.add(&temp);
 	}
 	//巨視的速度の計算

@@ -78,8 +78,8 @@ CGnuplotFileManager::FILE CLBMFileManager::writeVelocity(string * fileName, CLBM
 	for (int y = 0; y < info->y; y+=write_rate_y) {
 		for (int x = 0; x < info->x; x+=write_rate_x) {
 			CLBM::Point* point = lbm->getPoint(x, y, 0, CLBM::ACCESS::NOW);
-			double _y = info->cld / (double)info->y * (double)y;
-			double _x = (info->cld * aspect) / (double)info->x * (double)x;
+			double _y = info->deltaLength * (double)y;
+			double _x = info->deltaLength * (double)x;
 			if (point == nullptr) {
 				(*ofs) << _x << " " << _y << " " << 0 << " "<< 0 << endl;
 			}
@@ -106,8 +106,8 @@ CGnuplotFileManager::FILE CLBMFileManager::writePresser(string * fileName, CLBM 
 	for (int y = 0; y < info->y; y += write_rate_y) {
 		for (int x = 0; x < info->x; x += write_rate_x) {
 			CLBM::Point* point = lbm->getPoint(x, y, 0, CLBM::ACCESS::NOW);
-			double _y = info->cld / (double)info->y * (double)y;
-			double _x = (info->cld * aspect) / (double)info->x * (double)x;
+			double _y = info->deltaLength * (double)y;
+			double _x = info->deltaLength * (double)x;
 			if (point == nullptr) {
 				(*ofs) << _x << " " << _y << " " << 0 << endl;
 			}

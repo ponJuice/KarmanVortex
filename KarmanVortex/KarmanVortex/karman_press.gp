@@ -5,12 +5,16 @@ reset
 set nokey                # 凡例の非表示
 set xrange[0:0.192]
 set yrange[0:0.096]
-set size ratio 0.5
+set cbrange[0:120000]
+set view equal xy
+set view 0,0
+set contour
+set cntrparam levels incremental 0,2500,120000
 
 set parametric
 
 set term gif enhanced animate size 2048,2048     # 出力をgifアニメに設定
-set output "re_102_256_512_karman_omp.gif" # 出力ファイル名の設定
+set output "re_102_256_512_karman_omp_press.gif" # 出力ファイル名の設定
 #-------------------------------------------------------------------------------
 # 変数の設定
 #-------------------------------------------------------------------------------
@@ -22,4 +26,4 @@ adj = 0.01	#ベクトルの長さ
 #-------------------------------------------------------------------------------
 # ループの開始
 #-------------------------------------------------------------------------------
-load "karman.plt" 
+load "karman_press.plt" 
